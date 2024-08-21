@@ -40,7 +40,7 @@ spec:
         {{- end }}
     spec:
     {{- if not .Values.skipInitContainers }}
-      {{- if or .Values.dbchecker.enabled .Values.extraInitContainers }}
+      {{- if or .Values.dbchecker.enabled .Values.initContainers }}
       initContainers:
         {{- if and .Values.dbchecker.enabled }}
         - name: dbchecker
@@ -63,8 +63,42 @@ spec:
           resources:
             {{- toYaml .Values.dbchecker.resources | nindent 12 }}
         {{- end }}
-        {{- with .Values.extraInitContainers }}
-        {{- tpl . $ | nindent 8 }}
+        {{- $fullName := include "keycloak.fullname" . -}}
+        {{- $envVariables := .Values.extraEnv -}}
+        {{- $pullPolicy := .Values.image.pullPolicy -}}
+        {{- range $name, $initContainer := .Values.initContainers }}
+        - name: {{ $fullName }}-{{ kebabcase $name }}
+          securityContext:
+            {{- toYaml $initContainer.securityContext | nindent 12 }}
+          image: "{{ $initContainer.image.repository }}:{{- $initContainer.image.tag }}"
+          imagePullPolicy: {{ $initContainer.image.pullPolicy | default $pullPolicy }}
+          env:
+            {{- $envVariables | indent 12 }}
+          resources:
+            {{- toYaml $initContainer.resources | nindent 12 }}
+          {{- if $initContainer.volumeMounts }}
+          volumeMounts:
+            {{- range $mount := $initContainer.volumeMounts }}
+            - name: {{ $mount.name | quote }}
+              mountPath: {{ $mount.mountPath | quote }}
+              {{- if $mount.subPath }}
+              subPath: {{ $mount.subPath | quote }}
+              {{- end }}
+              readOnly: {{ $mount.readOnly | default false }}
+            {{- end }}
+          {{- end }}
+          {{- if $initContainer.command }}
+          command:
+            {{- range $initContainer.command }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if $initContainer.args }}
+          args:
+            {{- range $initContainer.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}
@@ -181,11 +215,56 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            {{- with .Values.extraVolumeMounts }}
-            {{- tpl . $ | nindent 12 }}
+            {{- range $mount := .Values.volumeMounts }}
+            - name: {{ $mount.name | quote }}
+              mountPath: {{ $mount.mountPath | quote }}
+              {{- if $mount.subPath }}
+              subPath: {{ $mount.subPath | quote }}
+              {{- end }}
+              readOnly: {{ $mount.readOnly | default false }}
             {{- end }}
-        {{- with .Values.extraContainers }}
-        {{- tpl . $ | nindent 8 }}
+        {{- range $name, $container := .Values.sidecarContainers }}
+        - name: {{ kebabcase $name }}
+          {{- with $container.securityContext }}
+          securityContext:
+            {{- toYaml | nindent 12 }}
+          {{- end }}
+          image: {{ $container.image | quote }}
+          {{- if $container.imagePullPolicy }}
+          imagePullPolicy: {{ $container.imagePullPolicy }}
+          {{- end }}
+          ports:
+            - name: {{ $container.name }}
+              containerPort: {{ $container.containerPort }}
+              protocol: TCP
+          {{- if $container.command }}
+          command:
+            {{- range $container.command }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if $container.args }}
+          args:
+            {{- range $container.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- with $container.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $container.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $container.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $container.resources }}
+          resources:
+            {{- toYaml | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -233,6 +312,30 @@ spec:
                 path: {{ $key }}
               {{- end }}
         {{- end }}
-        {{- with .Values.extraVolumes }}
-        {{- tpl . $ | nindent 8 }}
+        {{- range $k, $v := .Values.volumes }}
+        - name: {{ $v.name | quote }}
+          {{- if $v.secretRef }}
+          secret:
+            secretName: {{ $v.secretRef | quote }}
+          {{- end }}
+          {{- if $v.configMap }}
+          configMap:
+            name: {{ $v.configMap | quote }}
+          {{- end }}
+          {{- if $v.persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ $v.persistentVolumeClaim.claimName }}
+          {{- end }}
+          {{- if $v.csiSecretProviderClass }}
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ $v.csiSecretProviderClass }}
+          {{- end }}
+          {{- if $v.emptyDir }}
+          emptyDir:
+            {{- toYaml $v.emptyDir | nindent 12}}
+          {{- end }}
         {{- end }}
+

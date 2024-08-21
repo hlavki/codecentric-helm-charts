@@ -88,7 +88,13 @@ securityContext:
   runAsNonRoot: true
 
 # Additional init containers, e. g. for providing custom themes
-extraInitContainers: ""
+initContainers: {}
+
+initContainersOverride: {}
+
+volumeMounts: []
+
+volumes: []
 
 # When using service meshes which rely on a sidecar, it may be necessary to skip init containers altogether,
 # since the sidecar doesn't start until the init containers are done, and the sidecar may be required
@@ -97,7 +103,7 @@ extraInitContainers: ""
 skipInitContainers: false
 
 # Additional sidecar containers, e. g. for a database proxy, such as Google's cloudsql-proxy
-extraContainers: ""
+sidecarContainers: {}
 
 # Lifecycle hooks for the Keycloak container
 lifecycleHooks: |
